@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<menu>
+  <item>
+    <path>civicrm/admin/contribute/authorizenetsettings</path>
+    <page_callback>CRM_AuthorizeNet_Form_AuthorizeNetSettings</page_callback>
+    <title>AuthorizeNet Payments Settings</title>
+    <access_arguments>access CiviContribute,administer CiviCRM</access_arguments>
+  </item>
+</menu>
