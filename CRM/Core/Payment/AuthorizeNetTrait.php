@@ -412,6 +412,7 @@ trait CRM_Core_Payment_AuthorizeNetTrait {
     // Set default contribution status
     $params['contribution_status_id'] = CRM_Core_PseudoConstant::getKey('CRM_Contribute_BAO_Contribution', 'contribution_status_id', 'Pending');
     $params = $this->setParams($params);
+    $this->handleOneTimeFuturePayment($params);
     return $params;
   }
 
@@ -424,20 +425,111 @@ trait CRM_Core_Payment_AuthorizeNetTrait {
    * @throws \CiviCRM_API3_Exception
    */
   protected function endDoPayment($params) {
-    $contributionParams['trxn_id'] = $this->getPaymentProcessorInvoiceID();
+    if (!empty($params['is_recur']) && !empty($params['contributionRecurID'])) {
+      if (!empty($params['one_time_future'])) {
+        // Since record record was created separatly, we should make sure contribution 
+        //   is linked.
+        // Note: we can't just set it in $params because core won't consider it 
+        //   due to pending status
+        CRM_Core_DAO::setFieldValue('CRM_Contribute_DAO_Contribution', $params['contributionID'], 'contribution_recur_id', $params['contributionRecurID']);
 
-    if ($this->getContributionId($params)) {
-      $contributionParams['id'] = $this->getContributionId($params);
-      civicrm_api3('Contribution', 'create', $contributionParams);
-      unset($contributionParams['id']);
+        // if it's one time future transaction, unset recur traces, so UI behaves
+        // as if transaction was single.
+        foreach (array('is_recur', 'contributionRecurID') as $key) {
+          unset($params[$key]);
+          unset($this->_params[$key]);
+        }
+      }
     }
-    $params = array_merge($params, $contributionParams);
+    else {
+      $contributionParams['trxn_id'] = $this->getPaymentProcessorInvoiceID();
+
+      if ($this->getContributionId($params)) {
+        $contributionParams['id'] = $this->getContributionId($params);
+        civicrm_api3('Contribution', 'create', $contributionParams);
+        unset($contributionParams['id']);
+      }
+      $params = array_merge($params, $contributionParams);
+    }
 
     // We need to set this to ensure that contributions are set to the correct status
     if (!empty($params['contribution_status_id'])) {
       $params['payment_status_id'] = $params['contribution_status_id'];
     }
     return $params;
+  }
+
+  /**
+   * If it's a single future date transaction, create a one time recur record.
+   *
+   * @param array $params
+   *   Assoc array of input parameters for this transaction.
+   *
+   * @throws \CiviCRM_API3_Exception
+   */
+  protected function handleOneTimeFuturePayment(&$params) {
+    //get receive date from session as it's not getting passed from the form object params
+    // fixme: find other possibilities and avoid session
+    $session = CRM_Core_Session::singleton();
+    $futureDate = $session->get("future_receive_date_{$params['qfKey']}");
+
+    if (!empty($futureDate) && empty($params['is_recur'])) {
+      // one time future will not have a contribution recur ID, but we need
+      // to create one for downstream processing
+      $rParams = [];
+      $rParams['one_time_future'] = 1;
+      $rParams['is_recur']        = 1;
+      $rParams['installments']    = 1;
+      $rParams['frequency_unit']  = 'week';
+      $rparams['frequency_interval'] = 1;
+      foreach ($rParams as $key => $val) {
+        $this->setParam($key, $val);
+      }
+      $params = array_merge($params, $rParams);
+      $params['contributionRecurID'] = $this->createRecurringContribution($params);
+      $this->setParam('contributionRecurID', $params['contributionRecurID']);
+    }
+  }
+
+  /**
+   * Method to create one time recurring record. Used in case of a single future date
+   * transaction.
+   *
+   * @param array $params
+   *   Assoc array of input parameters for this transaction.
+   *
+   * @throws \CiviCRM_API3_Exception
+   */
+  protected function createRecurringContribution($params) {
+    $contributionStatus = CRM_Contribute_PseudoConstant::contributionStatus(NULL, 'name');
+    $recurParams = [
+      'contact_id' => $params['contactID'],
+      'amount' => $params['amount'],
+      'currency' => $params['currencyID'],
+      'frequency_unit' => $params['frequency_unit'],
+      'frequency_interval' => $params['frequency_interval'],
+      'installments' => CRM_Utils_Array::value('installments', $params, NULL),
+      'start_date' => CRM_Utils_Array::value('future_receive_date', $params, date('YmdHis')),
+      'invoice_id' => $params['invoiceID'],
+      'contribution_status_id' => array_search('In Progress', $contributionStatus),
+      'is_test' => FALSE,
+      'cycle_day' => 1,
+      'auto_renew' => FALSE,
+      'payment_processor_id' => $params['payment_processor_id'],
+      'financial_type_id' => $params['financialTypeID'],
+      'payment_instrument_id' => $params['payment_instrument_id'],
+      'contribution_type_id' => $params['financialTypeID'],
+    ];
+
+    try {
+      $recur = civicrm_api3('ContributionRecur', 'create', $recurParams);
+      return $recur['id'];
+    }
+    catch (CiviCRM_API3_Exception $e) {
+      CRM_Core_Error::debug_var('CreateRecurringContribution Exception $e', $CiviCRM_API3_Exception);
+    }
+
+    return NULL;
   }
 
 }

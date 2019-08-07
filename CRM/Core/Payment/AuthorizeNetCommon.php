@@ -142,7 +142,7 @@ abstract class CRM_Core_Payment_AuthorizeNetCommon extends CRM_Core_Payment {
 
     if (!empty($params['is_recur']) && !empty($params['contributionRecurID'])) {
       $this->doRecurPayment();
-      return $params;
+      return $this->endDoPayment($params);
     }
 
     // Authorize.Net will not refuse duplicates, so we should check if the user already submitted this transaction
