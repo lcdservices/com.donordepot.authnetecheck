@@ -14,7 +14,7 @@ class CRM_AuthorizeNet_Form_AuthorizeNetSettings extends CRM_Core_Form {
       ts('Enable public selection of future start dates.')
     );
 
-    $days = array('-1' => 'disabled');
+    $days = array('-1' => 'Any Date');
     for ($i = 1; $i <= 31; $i++) {
       $days["$i"] = "$i";
     }
