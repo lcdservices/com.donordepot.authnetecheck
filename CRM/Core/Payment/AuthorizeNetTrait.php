@@ -481,7 +481,7 @@ trait CRM_Core_Payment_AuthorizeNetTrait {
       $rParams['is_recur']        = 1;
       $rParams['installments']    = 1;
       $rParams['frequency_unit']  = 'week';
-      $rparams['frequency_interval'] = 1;
+      $rParams['frequency_interval'] = 1;
       foreach ($rParams as $key => $val) {
         $this->setParam($key, $val);
       }
@@ -526,7 +526,7 @@ trait CRM_Core_Payment_AuthorizeNetTrait {
       return $recur['id'];
     }
     catch (CiviCRM_API3_Exception $e) {
-      CRM_Core_Error::debug_var('CreateRecurringContribution Exception $e', $CiviCRM_API3_Exception);
+      CRM_Core_Error::debug_var('CreateRecurringContribution Exception $e', $e);
     }
 
     return NULL;
